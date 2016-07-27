@@ -578,6 +578,7 @@ class BulkUpsertTest(TestCase):
         Tests the case when no updates were previously stored and the int and char fields are used as a uniqueness
         constraint. In this case, there is data previously stored, but the uniqueness constraints dont match.
         """
+
         # Create previously stored test models with a unique int field and -1 for all other fields
         for i in range(3):
             G(models.TestModel, int_field=i, char_field='-1', float_field=-1)
