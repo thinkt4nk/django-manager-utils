@@ -31,20 +31,18 @@ def id_dict(queryset):
     return {obj.pk: obj for obj in queryset}
 
 
-def _get_upserts(queryset, model_objs_updated, model_objs_created, unique_fields):
+def _get_upserts_distinct(queryset, model_objs_updated, model_objs_created, unique_fields):
     """
     Given a list of model objects that were updated and model objects that were created,
-    return the list of all model objects upserted. Doing this requires fetching all of
-    the models created with bulk create (since django can't return bulk_create pks)
+    fetch the pks of the newly created models and return the two lists in a list
     """
-    # The upserted models default to the objects that were updated
-    upserted_models = model_objs_updated
+    created_models = []
     # Fetch the objects that were created based on the uniqueness constraint. Note - only support the case
     # where there is one update field so that we can perform an in query. TODO perform an OR query to gather
     # the created values when there is more than one update field
     if len(unique_fields) == 1:
         unique_field = unique_fields[0]
-        upserted_models.extend(
+        created_models.extend(
             queryset.filter(**{'{0}__in'.format(unique_field): (
                 getattr(model_obj, unique_field) for model_obj in model_objs_created
             )})
@@ -53,7 +51,17 @@ def _get_upserts(queryset, model_objs_updated, model_objs_created, unique_fields
         raise NotImplementedError(
             'bulk_upsert currently doesnt support returning upserts with more than one update field')
 
-    return upserted_models
+    return (model_objs_updated, created_models)
+
+
+def _get_upserts(queryset, model_objs_updated, model_objs_created, unique_fields):
+    """
+    Given a list of model objects that were updated and model objects that were created,
+    return the list of all model objects upserted. Doing this requires fetching all of
+    the models created with bulk create (since django can't return bulk_create pks)
+    """
+    updated, created = _get_upserts_distinct(queryset, model_objs_updated, model_objs_created, unique_fields)
+    return updated.extend(created)
 
 
 def _get_model_objs_to_update_and_create(model_objs, unique_fields, update_fields, extant_model_objs):
@@ -225,6 +233,8 @@ def bulk_upsert(
     # Optionally return the bulk upserted values
     if return_upserts:
         return _get_upserts(queryset, model_objs_to_update, model_objs_to_create, unique_fields)
+    # else, return a list of lists, the first being the updated models, the second being the newly created objects
+    return _get_upserts_distinct(queryset, model_objs_to_update, model_objs_to_create, unique_fields)
 
 
 def sync(queryset, model_objs, unique_fields, update_fields=None):
